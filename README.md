@@ -1,5 +1,5 @@
 # Singapore Rental Price Visualisations
-Singapore rental price visualisations based on public data pulled from Property Guru.
+A simple data collector and visualiser for Singapore rental price data. The `propertyData.json` file contains data collected on Dec 29th 2020. I'm new to Singapore and am going to rent a place soon, so I was playing around with public rental data as part of my decision process. Figured that I might as well throw the data into a Leaflet map and make it public.
 
 ## Demo
 
