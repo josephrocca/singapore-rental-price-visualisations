@@ -8,6 +8,8 @@ Singapore rental price visualisations based on public data pulled from Property 
 * https://josephrocca.github.io/singapore-rental-price-visualisations/#price_(rooms_only)
 * https://josephrocca.github.io/singapore-rental-price-visualisations/#building's_year_of_construction
 
+![visualisation user interface](https://github.com/josephrocca/singapore-rental-price-visualisations/blob/main/ui_usage.gif?raw=true)
+
 ## Data Collection
 
 If you'd like to collect your own data, open up propertyguru.com.sg, and paste the contents of `collectData.js` into your browser's console, and run it. You should see something like this (but much slower):
