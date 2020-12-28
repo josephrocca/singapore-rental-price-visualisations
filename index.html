@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>Singapore Rental Price Visualisations</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A==" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js" integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA==" crossorigin=""></script>
+  <script src="./leaflet-heat.js"></script>
+</head>
+<body>
+
+  <style>
+    body {
+      padding:0;
+      margin:0;
+      overflow:hidden;
+    }
+  </style>
+
+  <div style="position:fixed; top:20px; right:20px; z-index:100000; font-size: 1.5rem; padding: 0.6rem; background:white; display:flex; box-shadow:#afafaf 0px 1px 4px 1px; border-radius:3px;">
+    <select id="dataSelectorEl" style="font-size:inherit;"></select>
+    <div style="padding: 0rem 0.3rem;background: linear-gradient(90deg, rgba(2,0,36,1) 0%, rgba(255,0,0,1) 100%);min-width: 7rem;border-radius: 3px;margin-left: 0.3rem;"><span style="color:white;">low</span> <span style="float:right;">high</span></div>
+  </div>
+
+  <div id="leafletMapEl" style="width:100vw; height:100vh;"></div>
+  
+  <script>
+
+    let leafletMap = L.map('leafletMapEl').setView([1.35514020891972, 103.82028579711914], 12);
+    
+    L.tileLayer('https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw', {
+      maxZoom: 18,
+      attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
+      id: 'mapbox/streets-v11',
+      tileSize: 512,
+      zoomOffset: -1
+    }).addTo(leafletMap);
+
+    (async function() {
+
+
+
+
+      let properties = await fetch("./propertyData.json").then(r => r.json());
+
+      /*
+        `properties` is an array of objects like this:
+        {
+          "listingId": 23016085,
+          "priceText": "S$ 8,800 /mo",
+          "sizeText": "2432 sqft · Available from 5 Mar",
+          "roomsText": "<span class=\"bed\" title=\"4 Beds\">4 <i class=\"pg-icon pgicon-bedroom\"></i></span> <span class=\"bath\" title=\"5 Baths\">5 <i class=\"pg-icon pgicon-bathroom\"></i></span>",
+          "typeText": "Partially Furnished Condominium",
+          "builtYearText": "Built: 2010",
+          "locationText": "51 Cove Drive",
+          "lat": 1.246324,
+          "lng": 103.836208
+        }
+      */
+
+      for(let p of properties) {
+        p.price = p.priceText ? Number(p.priceText.split(" ")[1].replace(",", "")) : null;
+        p.floorArea = Number(p.sizeText.split(" ")[0].replace(",", ""));
+        p.isOnlyRoom = p.roomsText.includes("room-rental") || !p.roomsText.includes("pgicon-bathroom");
+        p.builtYear = p.builtYearText && p.builtYearText.toLowerCase().includes("built:") ? Number(p.builtYearText.split(" ")[1].replace(",", "")) : null;
+        p.pricePerSqFt = p.price ? p.price/p.floorArea : null;
+        p.numBeds = p.isOnlyRoom ? 1 : Number((p.roomsText.match(/title="([0-9]+) Beds?">/) || [])[1]) || null;
+        p.numBaths = p.isOnlyRoom ? null : Number((p.roomsText.match(/title="([0-9]+) Baths?">/) || [])[1]) || null;
+      }
+
+      properties = properties.filter(p => p.price && p.lat && p.lng);
+
+      function getPointHeatIntensity(price, min, max) { // min and max are to remove outliers and thus create more contrast in the heatmap
+        price = price < min ? min : (price > max ? max : price);
+        return (price-min)/(max-min);
+      }
+
+      let heatMapPoints = {
+        "price (full apartments)":                 properties.filter(p => !p.isOnlyRoom).map(p => [p.lat, p.lng, getPointHeatIntensity(p.price, 800, 7000),        p ]),
+        "price per square foot (full apartments)": properties.filter(p => !p.isOnlyRoom).map(p => [p.lat, p.lng, getPointHeatIntensity(p.pricePerSqFt, 2, 6), p ]),
+        "price (rooms only)":                      properties.filter(p => p.isOnlyRoom) .map(p => [p.lat, p.lng, getPointHeatIntensity(p.price, 500, 1500),        p ]),
+        "building's year of construction":         properties.filter(p => p.builtYear)  .map(p => [p.lat, p.lng, getPointHeatIntensity(p.builtYear, 1980, 2020),   p ]),
+      };
+
+      dataSelectorEl.innerHTML = Object.keys(heatMapPoints).map(k => `<option value="${k}">${k}</option>`).join("");
+      
+      let markers = [];
+      dataSelectorEl.onchange = function() {
+        //let heat = L.heatLayer(heatMapPoints["price (full apartments)"], {radius: 25}).addTo(leafletMap);
+        markers.forEach(m => m.remove());
+        markers = [];
+        let dataKey = this.value;
+        for(let p of heatMapPoints[dataKey]) {
+          let m = L.circle([p[0], p[1]], { color: `rgb(${255*p[2]}, 0, 0)`, fillColor: `rgb(${255*p[2]}, 0, 0)`, fillOpacity: 1, weight:10, radius: 50 }).addTo(leafletMap);
+          let d = p[3];
+          let toolTipText = `price: ${d.price}<br>price/sqft: ${d.pricePerSqFt.toFixed(1)}<br>built: ${d.builtYear || "?"}`;
+          if(d.numBeds) toolTipText += `<br>${d.numBeds}🛏️` + (d.isOnlyRoom ? "(room only)" : "");
+          if(d.numBaths) toolTipText += ` &nbsp;${d.numBaths}🛁`;
+          m.bindTooltip(toolTipText);
+          markers.push(m);
+          m.on('click', function(e) {
+            window.open(`https://www.propertyguru.com.sg/listing/id-${d.listingId}`);
+          });
+        }
+        location.hash = "#"+this.value.replace(/ /g, "_");
+      };
+      if(location.hash.slice(1)) dataSelectorEl.value = location.hash.slice(1).replace(/_/g, " ");
+      dataSelectorEl.onchange();
+
+    })();
+  </script>
+
+</body>
+</html>
